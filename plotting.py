@@ -17,7 +17,6 @@ import plotting as pl
 import data_import as di
 import utility as ut
 import seaborn as sns
-# Session plot ------------------------------------------------------------------------------
 
 def block_transsitions(prt):
     ind = np.where(prt==0)[0]
@@ -31,113 +30,271 @@ def block_transsitions(prt):
                     index[i]=j-1
 
     return index
-#Reversals Plot
+
+# Reversals Plot -------------------------------------------------------------------------
 def session_reversals_plot(experiment, subject_IDs ='all' , fig_no=1):
     if subject_IDs == 'all':
         subject_IDs = experiment.subject_IDs
     sessions_block = []
-    trials_from_prev_session = []
-    tasks = 8
+    trials_from_prev_session = [] #List to hold data from all subjects
+    tasks = 8 # Maximum number of tasks
     reversal_to_threshold = np.ones(shape=(9,tasks,21))
-    reversal_to_threshold[:] = np.NaN   
+    reversal_to_threshold[:] = np.NaN 
     for n_subj, subject_ID in enumerate(subject_IDs):
-        task_number = 0
-        reversal_number = 0
-        previous_session_config = 0
+        subject_sessions = experiment.get_sessions(subject_IDs=[subject_ID])
+        task_number = 0 # Current task number
+        reversal_number = 0 #
+        previous_session_config = 0 
         subject_sessions = experiment.get_sessions(subject_ID)
         trials_from_prev_session = 0
-
+        configuration = subject_sessions[0].trial_data['configuration_i']
         for j, session in enumerate(subject_sessions):
+            # Check if the task is new 
+            configuration = session.trial_data['configuration_i'] 
+            if configuration[0]!= previous_session_config:
+                reversal_number = 0
+                task_number += 1
+                trials_from_prev_session = 0
+                previous_session_config = configuration[0]  
+            # Find trials where reversals occured 
             sessions_block = session.trial_data['block']
             n_trials = session.trial_data['n_trials']
-            # Find trials where reversals occured
             Block_transitions = sessions_block[1:] - sessions_block[:-1]#block transition
             reversal_trials = np.where(Block_transitions == 1)[0]
             # Find trials where threshold crossed.
             prt = (session.trial_data['pre-reversal trials'] > 0).astype(int)
             threshold_crossing_trials = np.where((prt[1:] - prt[:-1]) == 1)[0]
             n_reversals = len(reversal_trials)
-            configuration = session.trial_data['configuration_i']
-            if configuration[0]!= previous_session_config:
-                reversal_number = 0
-                task_number += 1
-                trials_from_prev_session = 0
-                previous_session_config = configuration[0]
-            if not len(reversal_trials) > 0:
+            if len(reversal_trials) == 0:
                     trials_from_prev_session += n_trials
             else: 
                     for i, crossing_trial in enumerate(threshold_crossing_trials): 
-                        if reversal_number <= 20:
-                            if i == 0:#first element in the threshold_crossing_trials_list
-                                reversal_to_threshold[n_subj, task_number, reversal_number] = crossing_trial+trials_from_prev_session
-                                trials_from_prev_session = 0
-                            elif (i>0) and (i < n_reversals): # reversal occured.                     
-                                reversal_to_threshold[n_subj, task_number, reversal_number] = crossing_trial-reversal_trials[i-1]
-                            reversal_number += 1  
+                        if i< n_reversals:
+                            if reversal_number <= 20:
+                                if i == 0:#first element in the threshold_crossing_trials_list
+                                    reversal_to_threshold[n_subj, task_number, reversal_number] = crossing_trial+trials_from_prev_session
+                                    trials_from_prev_session = 0
+                                elif (i > 0) and (i < n_reversals): # reversal occured.                     
+                                    reversal_to_threshold[n_subj, task_number, reversal_number] = crossing_trial-reversal_trials[i-1]
+                                reversal_number += 1  
                         else: # revesal did not occur before end of session.
                             trials_from_prev_session = n_trials - reversal_trials[i-1]
+    print(reversal_to_threshold[0])
     mean_threshold=np.nanmean(reversal_to_threshold,axis = 0)
     x=np.arange(21)
-    print(mean_threshold[7,:])
+    std_proportion=np.nanstd(reversal_to_threshold, axis = 0)
+    sample_size=np.sqrt(9)
+    std_err= std_proportion/sample_size
+    plt.figure()
     for i in range(tasks - 1): 
          plt.plot(i * 20 + x, mean_threshold[i + 1])
-    plt.ylabel('Trials till threshold')
-    plt.xlabel('reversal number')
-          
-#Plot of pokes in order 
-#Session plot of poke I in the period following trial initiation
-def session_I_poke(session):
-    wrong_poke=0
-    correct_poke=0
-    wrong=[]
-    correct=[]
-    #choosing_I[:] = np.NaN
-    #choosing_A_B[:] = np.NaN
-    poke_I = 'poke_'+str(session.trial_data['configuration_i'][0])
-    poke_A = 'poke_'+str(session.trial_data['poke_A'][0])
-    poke_B = 'poke_'+str(session.trial_data['poke_B'][0])
-    prev_event_choice = False
-    #Event list only includes choice_state, init_trial and poke in events 
-    events_I = [event.name for event in session.events if event.name in ['choice_state', 'period_before_iti', poke_I]]
-    for i, event in enumerate(events_I):
-        if i < (len(events_I)-1):
-            if event == 'choice_state':
-                prev_event_choice = True
-                wrong_poke = 0
-            elif event == poke_I: 
-                if prev_event_choice == True:   
-                    wrong_poke += 1
-                    wrong.append(wrong_poke)                    
-            elif event == 'period_before_iti':
-                prev_event_choice == False                 
-                
-    number_I = (len(wrong))
-    print(number_I)
-    events_A_B = [event.name for event in session.events if event.name in ['choice_state', 'period_before_iti', poke_A, poke_B]]
-    for i, event in enumerate(events_A_B):
-        if i < (len(events_A_B)-1):
-            if event == 'choice_state':
-                prev_event_choice = True
-                
-            elif event == poke_A or event == poke_B: 
-                if prev_event_choice == True:
-                    correct_poke += 1
-                    correct.append(correct_poke)                    
-            elif events_A_B[i+1] == 'period_before_iti':
-                    prev_event_choice == False 
-    number_A_B = (len(correct))
-    print(number_A_B)
-    proportion_incorrect_correct=number_I/number_A_B
-    print(proportion_incorrect_correct)
+         plt.fill_between(i * 20 + x, mean_threshold[i + 1]-std_err[i + 1], mean_threshold[i + 1]+std_err[i + 1], alpha=0.2)
+    plt.ylabel('Number of Pokes Till Threshold ')
+    plt.xlabel('Reversal Number')
     
-#Experiment plot of poke I in the period following trial initiation    
+   
+#Experiment plot of poke A or B following the choice of A or B per reversal -------------------------------------------------------------------------
+def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1): 
+    if subject_IDs == 'all':
+        subject_IDs = experiment.subject_IDs
+        n_subjects = len(subject_IDs)  
+    else:
+        n_subjects = len(subject_IDs)
+    reversals = []
+    task = []
+    task_number =0
+    tasks=9
+    bad_pokes = np.zeros([n_subjects,tasks,20])# subject, task number, reversal number
+    bad_pokes[:] = np.NaN
+    
+    #Put all trials into one list for each subject
+    for n_subj, subject_ID in enumerate(subject_IDs):
+        subject_sessions = experiment.get_sessions(subject_ID)
+        previous_session_config = 0
+        task_number = 0
+        rev=0
+        wrong_count=0
+        prev_choice=[]
+        wrong_count=0
+        choice_state = False
+        trial = 0
+        task=[]
+        reversals =[]
+        all_sessions_wrong_ch=[]
+        
+        for j, session in enumerate(subject_sessions):
+            trials=session.trial_data['trials']
+            configuration = session.trial_data['configuration_i']
+            sessions_block = session.trial_data['block']
+            trials=session.trial_data['trials']
+            Block_transitions = sessions_block[1:] - sessions_block[:-1] #block transition
+            reversal_trials = np.where(Block_transitions == 1)[0]
+            poke_A = 'poke_'+str(session.trial_data['poke_A'][0])
+            poke_B = 'poke_'+str(session.trial_data['poke_B'][0])
+            sessions_block = session.trial_data['block']
+            trials=session.trial_data['trials']
+            trial_l = len(trials)
+            wrong_count=0
+            choice_state = 0
+            session_wrong_choice =[]
+            events = [event.name for event in session.events if event.name in ['choice_state', 'init_trial', poke_A, poke_B]]
+            if configuration[0]!= previous_session_config:
+                task_number += 1
+                rev = 0
+                previous_session_config = configuration[0]
+            for trial in trials:
+                task.append(task_number)
+                reversals.append(rev)
+                for reversal in reversal_trials:
+                    if reversal == trial:
+                        rev+=1  
+            for event in events:
+                if event == 'choice_state':
+                    choice_state+=1
+                    trial+=1
+                    session_wrong_choice.append(wrong_count)
+                    wrong_count = 0
+                    choice_state = True
+                elif event == poke_A : 
+                    if choice_state == True:
+                        prev_choice = 'Poke_A'
+                        choice_state = False
+                elif choice_state == False:
+                    if prev_choice == 'Poke_B': 
+                        wrong_count += 1                   
+                elif event == poke_B :
+                    if choice_state == True:
+                        prev_choice = 'Poke_B'
+                        choice_state = False
+                elif choice_state == False: 
+                    if prev_choice == 'Poke_A': 
+                        wrong_count += 1
+                elif event == 'init_trial':   
+                    choice_state = False  
+            if j == 0: 
+                all_sessions_wrong_ch = session_wrong_choice[0:trial_l]
+            if j > 0: 
+                all_sessions_wrong_ch +=session_wrong_choice[0:trial_l]
+            np_task = np.asarray(task)
+            np_reversals = np.asarray(reversals)
+            np_pokes = np.asarray(all_sessions_wrong_ch)
+        for tn in range(tasks):
+            if tn > 0:
+                for rn in range(20):
+                   a=np_pokes[(np_task==tn) & (np_reversals==rn)]
+                   a_pokes = np.asarray(a)
+                   mean_pokes= np.mean(a_pokes)
+                   bad_pokes[n_subj,tn,rn] = mean_pokes
+    mean_bad_pokes=np.nanmean(bad_pokes,axis = 0)
+    x=np.arange(20)
+    std_proportion=np.nanstd(bad_pokes, axis = 0)
+    sample_size=np.sqrt(9)
+    std_err= std_proportion/sample_size
+    for i in range(tasks - 1): 
+        plt.plot(i * 20 + x, mean_bad_pokes[i + 1])
+        plt.fill_between(i * 20 + x, mean_bad_pokes[i + 1]-std_err[i + 1], mean_bad_pokes[i + 1]+std_err[i + 1], alpha=0.2)
+    plt.ylabel('Number of A/B pokes following A/B choice')
+    plt.xlabel('Reversal')
+                   
+            
+# Experiment plot of I pokes during the choice state when A or B should be chosen per reversal -------------------------------------------------------------------------
+def session_I_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1): 
+    if subject_IDs == 'all':
+        subject_IDs = experiment.subject_IDs
+        n_subjects = len(subject_IDs)
+    else:
+        n_subjects = len(subject_IDs)
+    reversals = []
+    task = []
+    task_number =0
+    tasks=9
+    bad_pokes = np.zeros([n_subjects,tasks,21])# subject, task number, reversal number
+    bad_pokes[:] = np.NaN
+    #Put all trials into one list for each subject
+    for n_subj, subject_ID in enumerate(subject_IDs):
+        subject_sessions = experiment.get_sessions(subject_ID)
+        previous_session_config = 0
+        task_number = 0
+        rev=0
+        trial = 0
+        task=[]
+        reversals =[]
+        all_sessions_wrong_ch=[]
+        prev_event_choice = False 
+        period_before_ITI = False
+        for j, session in enumerate(subject_sessions):
+            trials=session.trial_data['trials']
+            configuration = session.trial_data['configuration_i']
+            sessions_block = session.trial_data['block']
+            trials=session.trial_data['trials']
+            Block_transitions = sessions_block[1:] - sessions_block[:-1] #block transition
+            reversal_trials = np.where(Block_transitions == 1)[0]
+            prev_event_choice = False
+            poke_I = 'poke_'+str(session.trial_data['configuration_i'][0])
+            poke_A = 'poke_'+str(session.trial_data['poke_A'][0])
+            poke_B = 'poke_'+str(session.trial_data['poke_B'][0])
+            events = [event.name for event in session.events if event.name in ['choice_state', 'period_before_iti', poke_I, poke_A, poke_B]]
+            trials = [event.name for event in session.events if event.name in ['choice_state']]
+            sessions_block = session.trial_data['block']
+            trials=session.trial_data['trials']
+            trial_l = len(trials)
+            wrong_poke=0
+            session_wrong_choice =[]    
+            if configuration[0]!= previous_session_config:
+                task_number += 1
+                rev = 0
+                previous_session_config = configuration[0]
+            for trial in trials:
+                task.append(task_number)
+                reversals.append(rev)
+                for reversal in reversal_trials:
+                    if reversal == trial:
+                        rev+=1  
+            for event in events:
+                if event == 'choice_state':
+                    session_wrong_choice.append(wrong_poke)
+                    prev_event_choice = True
+                    period_before_ITI = True
+                    wrong_poke = 0
+                elif event == poke_I: 
+                    if prev_event_choice == True and period_before_ITI== True:   
+                        wrong_poke += 1
+                elif event == 'period_before_iti':
+                    period_before_ITI = False
+            if j == 0: 
+                all_sessions_wrong_ch = session_wrong_choice[0:trial_l]
+            if j > 0: 
+                all_sessions_wrong_ch +=session_wrong_choice[0:trial_l]
+            np_task = np.asarray(task)
+            np_reversals = np.asarray(reversals)
+            np_pokes = np.asarray(all_sessions_wrong_ch)
+        for tn in range(tasks):
+            if tn > 0:
+                for rn in range(21):
+                    a=np_pokes[(np_task==tn) & (np_reversals==rn)]
+                    a_pokes = np.asarray(a)
+                    mean_pokes= np.nanmean(a_pokes)
+                    bad_pokes[n_subj,tn,rn] = mean_pokes        
+    mean_bad_pokes=np.nanmean(bad_pokes,axis = 0)
+    std_proportion=np.nanstd(bad_pokes, axis = 0)
+    sample_size=np.sqrt(9)
+    std_err= std_proportion/sample_size
+    x=np.arange(21)
+    for i in range(tasks - 1): 
+        plt.plot(i * 20 + x, mean_bad_pokes[i + 1])
+        plt.fill_between(i * 20 + x, mean_bad_pokes[i + 1]-std_err[i + 1], mean_bad_pokes[i + 1]+std_err[i + 1], alpha=0.2)
+    plt.ylabel('Number of I pokes during Choice State')
+    plt.xlabel('Reversal')
+            
+#Plot of pokes in order -------------------------------------------------------------------------
+    
+# Experiment plot of poke I in the period following trial initiation -------------------------------------------------------------------------
 def session_I_poke_exp(experiment, subject_IDs ='all', fig_no = 1): 
     if subject_IDs == 'all':
         subject_IDs = experiment.subject_IDs
         #n_subjects = len(subject_IDs)
     wrong_poke=0
     correct_poke=0
-    proportion_incorrect_correct= 0
     wrong=[]
     number_A_B = np.ones(shape=(9,30))
     number_A_B[:] = np.NaN 
@@ -164,7 +321,6 @@ def session_I_poke_exp(experiment, subject_IDs ='all', fig_no = 1):
             events = [event.name for event in session.events if event.name in ['choice_state', 'period_before_iti', poke_I, poke_A, poke_B]]
             trials = [event.name for event in session.events if event.name in ['choice_state']]
             l_trials=len(trials)
-            print(l_trials)
             for event in events:
                 if event == 'choice_state':
                     prev_event_choice = True
@@ -184,13 +340,13 @@ def session_I_poke_exp(experiment, subject_IDs ='all', fig_no = 1):
                         correct_poke += 1
                 elif event == 'period_before_iti':
                     period_before_ITI = False
-                number_I[n_subj,j] = (sum(wrong)/l_trials)
-                number_A_B[n_subj,j] = (sum(correct)/l_trials)
-                
+            print(sum(wrong))
+            number_I[n_subj,j] = (sum(wrong)/l_trials)
+            number_A_B[n_subj,j] = (sum(correct)/l_trials)            
     #mean_proportion=np.nanmean(number_I,axis = 0)
     number_I_mean=np.nanmean(number_I,axis = 0)
     number_A_B_mean = np.nanmean(number_A_B,axis = 0)
-    proportion_incorrect_correct=number_I_mean/number_A_B_mean
+    #proportion_incorrect_correct=number_I_mean/number_A_B_mean
     sns.set()
     #std_proportion=np.nanstd(number_I, axis = 0)
     std_proportion=np.nanstd(number_I_mean, axis = 0)
@@ -202,7 +358,7 @@ def session_I_poke_exp(experiment, subject_IDs ='all', fig_no = 1):
     plt.ylabel('Proportion of I to A/B pokes during the choice period')
     plt.xlabel('Session') 
     
-#Experiment plot of poke A or B following the choice of A or B  
+# Experiment plot of poke A or B following the choice of A or B -------------------------------------------------------------------------
 def session_A_B_poke_exp(experiment,subject_IDs ='all', fig_no = 1): 
     if subject_IDs == 'all':
         subject_IDs = experiment.subject_IDs
@@ -252,64 +408,20 @@ def session_A_B_poke_exp(experiment,subject_IDs ='all', fig_no = 1):
     sample_size=np.sqrt(9)
     std_err= std_dev/sample_size
     #plt.errorbar(sessions, wrong_ch_mean, yerr = std_err)
-
     plt.fill_between(sessions, wrong_ch_mean-std_err, wrong_ch_mean+std_err, alpha=0.2, facecolor='b')
     plt.plot(sessions,wrong_ch_mean,'b')
     plt.ylabel('Number of A/B poke following A/B choice ')
     plt.xlabel('Session') 
     
-    
-    
-# Single session for number of poke A or B following A or B choice                                     
-def session_A_B_poke_sess(session, fig_no = 1): 
-    wrong_choice=[]
-    prev_choice=[]
-    wrong_count=0
-    choice_state = False
-    #choosing_I[:] = np.NaN
-    #choosing_A_B[:] = np.NaN
-    #poke_I = 'poke_'+str(session.trial_data['configuration_i'][0])
-    poke_A = 'poke_'+str(session.trial_data['poke_A'][0])
-    poke_B = 'poke_'+str(session.trial_data['poke_B'][0])
-    #Event list only includes choice_state, init_trial and poke in events 
-    events = [event.name for event in session.events if event.name in ['choice_state', 'init_trial', poke_A, poke_B]]
-    trials = [event.name for event in session.events if event.name in ['choice_state']]
-    l_trials=len(trials)
-    print(l_trials)
-    for event in events:
-            if event == 'choice_state':
-                wrong_choice.append(wrong_count)
-                print(wrong_choice)
-                wrong_count = 0
-                choice_state = True
-            elif event == poke_A : 
-                if choice_state == True:
-                    prev_choice = 'Poke_A'
-                    choice_state = False
-                elif choice_state == False:
-                    if prev_choice == 'Poke_B': 
-                        wrong_count += 1                   
-            elif event == poke_B :
-                if choice_state == True:
-                    prev_choice = 'Poke_B'
-                    choice_state = False
-                elif choice_state == False: 
-                    if prev_choice == 'Poke_A': 
-                        wrong_count += 1
-            elif event == 'init_trial':   
-                choice_state = False
-                wrong_count = 0 
-    wrong_ch = (sum(wrong_choice)/l_trials)
-    print(wrong_ch)
-    
- # Session plot of reversals    
+
+ # Session plot of reversals-------------------------------------------------------------------------  
 def session_plot_moving_average(session, fig_no = 1, is_subplot = False):
     block=session.trial_data['block']
     'Plot reward probabilities and moving average of choices for a single session.'
-    if not is_subplot: plt.figure(f.ig_no, figsize = [7.5, 1.8]).clf()
+    if not is_subplot: plt.figure(fig_no, figsize = [7.5, 1.8]).clf()
     Block_transitions = block[1:]-block[:-1]
     choices = session.trial_data['choices']
-    threshold = block_transsitions(session.trial_data['pre-reversal trials'])# threshold
+    #threshold = block_transsitions(session.trial_data['pre-reversal trials'])# threshold
     index_block = []
     for i in Block_transitions:
         index_block = np.where(Block_transitions == 1)[0]
