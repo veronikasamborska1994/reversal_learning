@@ -123,8 +123,9 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
         reversals =[]
         outcome=[]
         all_sessions_wrong_ch=[]
+        non_rewarded_trial = False
         rewarded_trial = False
-        out=0
+        
         for j, session in enumerate(subject_sessions):
             trials=session.trial_data['trials']
             configuration = session.trial_data['configuration_i']
@@ -132,20 +133,18 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
             trials=session.trial_data['trials']
             Block_transitions = sessions_block[1:] - sessions_block[:-1] #block transition
             reversal_trials = np.where(Block_transitions == 1)[0]
-            outcomes= session.trial_data['outcomes']
-            outcome_change = outcomes[1:] - outcomes[:-1]
-            outcome_index = reversal_trials = np.where(outcome_change == 1)[0]
             poke_A = 'poke_'+str(session.trial_data['poke_A'][0])
             poke_B = 'poke_'+str(session.trial_data['poke_B'][0])
             sessions_block = session.trial_data['block']
             trials=session.trial_data['trials']
             trial_l = len(trials)
+            outcomes= session.trial_data['outcomes']
+            #rewarded_l = np.count_nonzero(outcomes_rewarded == 0)
             choice_state = 0
             session_wrong_choice =[]
             trial_count = 0
             session_trial_count=[]
             events = [event.name for event in session.events if event.name in ['choice_state', 'init_trial', 'poke_a_reward', 'poke_b_reward','sound_b_no_reward', 'sound_b_reward','sound_a_no_reward','sound_a_reward',poke_A, poke_B]]
-
             if configuration[0]!= previous_session_config:
                 task_number += 1
                 rev = 0
@@ -153,13 +152,10 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
             for trial in trials:
                 task.append(task_number)
                 reversals.append(rev)
-                outcome.append(out)
+                outcome.append(outcomes)
                 for reversal in reversal_trials:
                     if reversal == trial:
                         rev+=1
-                #for i in outcome_index:
-                    #if i == trial:
-                        #out+=1
             for event in events:
                 if event == 'choice_state':
                     #choice_state+=1
@@ -169,12 +165,12 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
                     wrong_count = 0
                     trial_count = 0
                     choice_state = True
-                #elif event == 'sound_b_no_reward': #or event == 'sound_a_reward':
-                    #rewarded_trial = True
-                    #trial_count+=1
-               # elif event == 'sound_a_no_reward':
-                   # rewarded_trial = True
-                    #trial_count+=1
+                elif event == 'sound_b_no_reward': #or event == 'sound_a_reward':
+                    rewarded_trial = True
+                    trial_count+=1
+                elif event == 'sound_a_no_reward':
+                    rewarded_trial = True
+                    trial_count+=1
                 elif event == poke_A : 
                     if choice_state == True:
                         prev_choice = 'Poke_A'
@@ -182,7 +178,8 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
                     elif choice_state == False:
                         #if rewarded_trial == True and prev_choice == 'Poke_B': 
                         if prev_choice == 'Poke_B': 
-                            wrong_count += 1              
+                            wrong_count += 1
+                    
                 elif event == poke_B :
                     if choice_state == True:
                         prev_choice = 'Poke_B'
@@ -191,6 +188,8 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
                         #if rewarded_trial == True and prev_choice == 'Poke_A': 
                         if prev_choice == 'Poke_A': 
                             wrong_count += 1
+
+                            
                 elif event == 'init_trial':   
                     choice_state = False  
                     rewarded_trial = False
@@ -201,18 +200,13 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
         np_task = np.asarray(task)
         np_reversals = np.asarray(reversals)
         np_pokes = np.asarray(all_sessions_wrong_ch) 
-        np_outcomes= np.asarray(outcome)
-        #print(np_reversals)
         for tn in range(tasks):
             if tn > 0:
                 for rn in range(20):
-                   #a=np_pokes[(np_task==tn) & (np_reversals==rn)] 
-                   a=np_pokes[(np_task==tn) & (np_reversals==rn)]
+                   a=np_pokes[(np_task==tn) & (np_reversals==rn)] 
                    a_pokes = np.asarray(a)
                    mean_pokes=np.mean(a_pokes)
-                   #mean_pokes=np.nansum(a_pokes)/trial_l
-                   #mean_pokes = np.asarray(mean_pokes, dtype='f')
-                   #mean_pokes[mean_pokes == 0] = np.nan
+                   #print(mean_pokes)
                    #mean_pokes= (sum(a_pokes))/trial_l
                    #print(mean_pokes)
                    #mean_pokes= (sum(a_pokes))/trl_len
@@ -223,7 +217,8 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
                    #mean_pokes[mean_pokes == 0] = np.nan
                    #print(mean_pokes)
                    bad_pokes[n_subj,tn,rn] = mean_pokes
-
+    #print(bad_pokes[2])
+    #print(bad_pokes)
     #print(all_sessions_wrong_ch)
     #print(len(all_sessions_wrong_ch))
     mean_bad_pokes=np.nanmean(bad_pokes,axis = 0)
