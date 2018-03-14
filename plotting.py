@@ -5,20 +5,17 @@ Created on Mon Jan 22 11:36:22 2018
 
 @author: veronikasamborska
 """
-
 import numpy as np
 import pylab as plt
-from scipy.stats import fisher_exact
 import matplotlib.pyplot as plot
-import collections as cl
 import sys 
 sys.path.append('/Users/veronikasamborska/Desktop/2018-12-12-Reversal_learning/code/reversal_learning/')
-import plotting as pl 
-import data_import as di
 import utility as ut
 import seaborn as sns
+import pandas as pd
 
-def block_transsitions(prt):
+# Function to find where block transitions were for the session plosts 
+def block_transsitions(prt): 
     ind = np.where(prt==0)[0]
     index= []
     for i in ind:
@@ -32,7 +29,7 @@ def block_transsitions(prt):
     return index
 
 # Reversals Plot -------------------------------------------------------------------------
-def session_reversals_plot(experiment, subject_IDs ='all' , fig_no=1):
+def trials_till_reversal_plot(experiment, subject_IDs ='all' , fig_no=1):
     if subject_IDs == 'all':
         subject_IDs = experiment.subject_IDs
     sessions_block = []
@@ -59,7 +56,7 @@ def session_reversals_plot(experiment, subject_IDs ='all' , fig_no=1):
             # Find trials where reversals occured 
             sessions_block = session.trial_data['block']
             n_trials = session.trial_data['n_trials']
-            Block_transitions = sessions_block[1:] - sessions_block[:-1]#block transition
+            Block_transitions = sessions_block[1:] - sessions_block[:-1] # Block transition
             reversal_trials = np.where(Block_transitions == 1)[0]
             # Find trials where threshold crossed.
             prt = (session.trial_data['pre-reversal trials'] > 0).astype(int)
@@ -70,78 +67,95 @@ def session_reversals_plot(experiment, subject_IDs ='all' , fig_no=1):
             else: 
                     for i, crossing_trial in enumerate(threshold_crossing_trials): 
                         if i< n_reversals:
-                            if reversal_number <= 20:
-                                if i == 0:#first element in the threshold_crossing_trials_list
+                            if reversal_number <= 19:
+                                if i == 0: # First element in the threshold_crossing_trials_list
                                     reversal_to_threshold[n_subj, task_number, reversal_number] = crossing_trial+trials_from_prev_session
                                     trials_from_prev_session = 0
                                 elif (i > 0) and (i < n_reversals): # reversal occured.                     
                                     reversal_to_threshold[n_subj, task_number, reversal_number] = crossing_trial-reversal_trials[i-1]
                                 reversal_number += 1  
-                        else: # revesal did not occur before end of session.
+                        else: # Revesal did not occur before end of session.
                             trials_from_prev_session = n_trials - reversal_trials[i-1]
-    print(reversal_to_threshold[0])
+                            
+    # Exporting data as excel files using pandas to reversal_learning folder
+    task1_pd_reversals= pd.DataFrame(data=reversal_to_threshold[:,1,:])
+    task2_pd_reversals = pd.DataFrame(data=reversal_to_threshold[:,2,:])
+    task3_pd_reversals = pd.DataFrame(data=reversal_to_threshold[:,3,:])
+    task4_pd_reversals = pd.DataFrame(data=reversal_to_threshold[:,4,:])
+    task5_pd_reversals = pd.DataFrame(data=reversal_to_threshold[:,5,:])
+    task1_pd_reversals.to_csv('task1_pd_reversals.csv')
+    task2_pd_reversals.to_csv('task2_pd_reversals.csv')
+    task3_pd_reversals.to_csv('task3_pd_reversals.csv')
+    task4_pd_reversals.to_csv('task4_pd_reversals.csv')
+    task5_pd_reversals.to_csv('task5_pd_reversals.csv')
     mean_threshold=np.nanmean(reversal_to_threshold,axis = 0)
     x=np.arange(21)
     std_proportion=np.nanstd(reversal_to_threshold, axis = 0)
     sample_size=np.sqrt(9)
     std_err= std_proportion/sample_size
-    plt.figure()
     sns.set()
     for i in range(tasks - 1): 
          plt.plot(i * 20 + x, mean_threshold[i + 1])
          plt.fill_between(i * 20 + x, mean_threshold[i + 1]-std_err[i + 1], mean_threshold[i + 1]+std_err[i + 1], alpha=0.2)
     plt.ylabel('Number of Trials Till Threshold ')
+    #plt.title('m473, m474, m475')
     plt.xlabel('Reversal Number')
     
    
 #Experiment plot of poke A or B following the choice of A or B per reversal -------------------------------------------------------------------------
-def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1): 
+def A_B_poke_reversal_plot(experiment,subject_IDs ='all', fig_no = 1): 
+# =============================================================================
+#   Define what you want to plot (Probability of A/B Poke, Number of A/B pokes on Rewared Trials,
+#   Number of A/B pokes on Non-Rewared Trials or Number of A/B pokes on All Trials
+#   Could also do Probability Plots for Rewarded vs Non-Rewarded Trials 
+# =============================================================================
+    probability_plot = False # True for probability and True for all_trials/rewareded_trials/non_rewarded_trials 
+    all_trials = True # True for all_trials; If need a plot for number of pokes probability_plot = False 
+    rewarded_trials = False # True for rewarded
+    non_rewarded_trials = False # True for non-rewarded
+    
+# Find number of subjects 
     if subject_IDs == 'all':
         subject_IDs = experiment.subject_IDs
         n_subjects = len(subject_IDs)  
     else:
         n_subjects = len(subject_IDs)
-    reversals = []
-    task = []
-    task_number =0
-    tasks=5
-    bad_pokes = np.zeros([n_subjects,tasks,20])# subject, task number, reversal number
-    bad_pokes[:] = np.NaN
-    trial_count = 0
+    tasks = 6 # Maximum number of tasks completed 
+    trial_count = 0 # Initiate trial count (used it for debugging)
+    bad_pokes = np.zeros([n_subjects,tasks,20])  # Subject, task number, reversal number
+    bad_pokes[:] = np.NaN # Fill it with NaNs 
+    
     #Put all trials into one list for each subject
     for n_subj, subject_ID in enumerate(subject_IDs):
         subject_sessions = experiment.get_sessions(subject_ID)
-        previous_session_config = 0
-        task_number = 0
-        rev=0
-        wrong_count=0
-        prev_choice=[]
-        wrong_count=0
-        choice_state = False
-        trial = 0
-        task=[]
-        reversals =[]
-        outcome=[]
-        outcomes_count=0
-        all_sessions_wrong_ch=[]
-        rewarded_trial = False
+        previous_session_config = 0 # Initiate previous configuration
+        task_number = 0 # Initiate task number
+        rev = 0 # Initiate reversal number
+        wrong_count = 0 # Initiate count of wrong pokes
+        outcomes_count = 0 # Initiate count of outcomes
+        task = [] # Empty list to later append to task number from all sessions
+        reversals = [] # Empty list to later append to reversal number from all sessions
+        outcome = [] # Empty list to later append to outcomes on each trial from all sessions (rewarded = 1, non_rewarded = 0)
+        all_sessions_wrong_ch = [] # Get the list with only trials that were treated as trials in task programme
+        rewarded_trial = False # State for whether the trial was rewarded (initate at False)
+        non_rewarded_trial = False # State for whether the trial was non-rewarded(initate at False)
+        choice_state = False # State for whether the event happens in the choice state (initate at False)
         for j, session in enumerate(subject_sessions):
             trials=session.trial_data['trials']
             configuration = session.trial_data['configuration_i']
             sessions_block = session.trial_data['block']
             trials=session.trial_data['trials']
-            Block_transitions = sessions_block[1:] - sessions_block[:-1] #block transition
+            Block_transitions = sessions_block[1:] - sessions_block[:-1] # Block transition
             reversal_trials = np.where(Block_transitions == 1)[0]
             outcomes= session.trial_data['outcomes']
             outcome_transitions = np.where(outcomes == 1)[0]
             poke_A = 'poke_'+str(session.trial_data['poke_A'][0])
             poke_B = 'poke_'+str(session.trial_data['poke_B'][0])
             sessions_block = session.trial_data['block']
-            trials=session.trial_data['trials']
+            trials = session.trial_data['trials']
             trial_l = len(trials)
-            choice_state = 0
             session_wrong_choice =[]
-            session_trial_count=[]
+            #session_trial_count=[] #Used it for debugging
             events = [event.name for event in session.events if event.name in ['choice_state', 'init_trial','sound_b_no_reward', 'sound_b_reward','sound_a_no_reward','sound_a_reward',poke_A, poke_B]]
             if configuration[0]!= previous_session_config:
                 task_number += 1
@@ -151,7 +165,7 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
                 task.append(task_number)
                 reversals.append(rev)
                 outcome.append(outcomes_count)
-                outcomes_count=0
+                #outcomes_count=0
                 for reversal in reversal_trials:
                     if reversal == trial:
                         rev+=1
@@ -161,79 +175,118 @@ def session_A_B_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
             for event in events:
                 if event == 'choice_state':
                     session_wrong_choice.append(wrong_count)
-                    session_trial_count.append(trial_count)
+                    #session_trial_count.append(trial_count) #Used it for debugging
                     wrong_count = 0
                     choice_state = True
                     rewarded_trial = False
-                elif event == 'sound_b_reward': #or event == 'sound_a_reward':
-                    rewarded_trial = True
-                    trial_count+=1
+                elif event == 'sound_b_reward':
+                    if rewarded_trials == True: 
+                        rewarded_trial = True
+                        #trial_count+=1 #Used it for debugging
                 elif event == 'sound_a_reward':
-                    rewarded_trial = True
-                    trial_count+=1
+                    if rewarded_trials == True:
+                        rewarded_trial = True
+                        trial_count+=1
+                elif event == 'sound_a_no_reward':
+                    if non_rewarded_trials == True:
+                        non_rewarded_trial = True
+                        #trial_count+=1 #Used it for debugging
+                elif event == 'sound_b_no_reward':
+                    if non_rewarded_trials == True:
+                        non_rewarded_trial = True
+                        #trial_count+=1 #Used it for debugging
                 elif event == poke_A : 
                     if choice_state == True:
                         prev_choice = 'Poke_A'
                         choice_state = False
                     elif choice_state == False:
-                        if rewarded_trial == True and prev_choice == 'Poke_B': # For rewarded trials only
-                        #if prev_choice == 'Poke_B': #For all trials 
-                            wrong_count += 1   
+                        if all_trials == True: 
+                            if prev_choice == 'Poke_B': 
+                                wrong_count += 1   
+                        elif rewarded_trials == True:
+                            if rewarded_trial == True and prev_choice == 'Poke_B': 
+                                wrong_count += 1
+                        elif non_rewarded_trials == True:
+                            if non_rewarded_trial == True and prev_choice == 'Poke_B':
+                                wrong_count += 1 
                 elif event == poke_B :
                     if choice_state == True:
                         prev_choice = 'Poke_B'
                         choice_state = False
                     elif choice_state == False: 
-                        if rewarded_trial == True and prev_choice == 'Poke_A': #For rewarded trials only
-                        #if prev_choice == 'Poke_A': #For all trials 
-                            wrong_count += 1                
+                        if all_trials == True: 
+                            if prev_choice == 'Poke_A': 
+                                wrong_count += 1     
+                        elif rewarded_trials == True:
+                            if rewarded_trial == True and prev_choice == 'Poke_A': 
+                                wrong_count += 1  
+                        elif non_rewarded_trials ==True: 
+                            if non_rewarded_trial == True and prev_choice == 'Poke_A':
+                                wrong_count += 1 
                 elif event == 'init_trial':   
                     choice_state = False  
             if j == 0: 
                 all_sessions_wrong_ch = session_wrong_choice[0:trial_l]
             if j > 0: 
                 all_sessions_wrong_ch +=session_wrong_choice[0:trial_l]
-        print(sum(session_wrong_choice))
+                
+        # Change lists to numpy arrays       
         np_task = np.asarray(task)
         np_reversals = np.asarray(reversals)
         np_outcomes= np.asarray(outcome) # 1s on the trials that were rewarded 
         np_pokes = np.asarray(all_sessions_wrong_ch) 
+        
+        # Finding A/B pokes for each task (tn), and each reversal (rn) within the task
         for tn in range(tasks):
             if tn > 0:
                 for rn in range(20):
                    a=np_pokes[(np_task==tn) & (np_reversals==rn)]
-                   outcomes= np_outcomes[(np_task==tn) & (np_reversals==rn)] #For rewarded or non-rewarded trials
+                   outcomes= np_outcomes[(np_task == tn) & (np_reversals == rn)] #For rewarded or non-rewarded trials
                    outcomes_sum_np=np.asarray(outcomes) #For rewarded trials
-                   num_zeros = (outcomes_sum_np == 0).sum() #For non-rewarded trials
-                   outcomes_sum=sum(outcomes_sum_np) #For rewarded trials
-                   
-                   a_pokes = np.asarray(a) #For both rewarded and non-rewarded trials
-                   trial_length= len(a_pokes)
-                   if trial_length == 0:
-                       mean_pokes = 0
-                   #mean_pokes=(sum(a_pokes))/num_zeros #outcomes_sum #num_zeros #outcomes_sum 
-                   #mean_pokes=np.mean(a_pokes) #For all trials
-                   else:
-                       mean_pokes = (sum(a_pokes))/(len(a_pokes))
-                   #mean_pokes=(sum(a_pokes))/outcomes_sum
-
+                   a_pokes = np.asarray(a)
+                   if probability_plot == True:  #For probability calculations  
+                       np_probability_index = np.where(a_pokes != 0) #For probability calculations
+                       a_pokes[np_probability_index] = 1
+                       mean_pokes=np.mean(a_pokes)
+                   elif all_trials == True and probability_plot == False: 
+                       a_pokes = np.asarray(a) #For both rewarded and non-rewarded trials
+                       mean_pokes=np.mean(a_pokes) #For all trials
+                   elif rewarded_trials == True:
+                       outcomes_sum=sum(outcomes_sum_np)
+                       mean_pokes=(sum(a_pokes))/outcomes_sum #outcomes_sum #num_zeros #outcomes_sum 
+                   elif non_rewarded_trials == True:
+                        num_zeros = (outcomes_sum_np == 0).sum()
+                        mean_pokes=(sum(a_pokes))/num_zeros     
+                   elif np.isinf(mean_pokes):
+                       mean_pokes=0
                    bad_pokes[n_subj,tn,rn] = mean_pokes
-
+    #task1_pd_ab= pd.DataFrame(data=bad_pokes[:,1,:])
+    #task2_pd_ab = pd.DataFrame(data=bad_pokes[:,2,:])
+    #task3_pd_ab = pd.DataFrame(data=bad_pokes[:,3,:])
+    #task4_pd_ab = pd.DataFrame(data=bad_pokes[:,4,:])
+    #task1_pd_ab.to_csv('task1_ab_reversals.csv')
+    #task2_pd_ab.to_csv('task2_ab_reversals.csv')
+    #task3_pd_ab.to_csv('task3_ab_reversals.csv')
+    #task4_pd_ab.to_csv('task4_ab_reversals.csv')
+    #Mean Pokes 
     mean_bad_pokes=np.nanmean(bad_pokes,axis = 0)
     x=np.arange(20)
+    # Standard Errors 
     std_proportion=np.nanstd(bad_pokes, axis = 0)
     sample_size=np.sqrt(9)
     std_err= std_proportion/sample_size
+    #Plotting
     for i in range(tasks - 1): 
-        plt.plot(i * 20 + x, mean_bad_pokes[i + 1], alpha = 0.4)
+        plt.plot(i * 20 + x, mean_bad_pokes[i + 1])
         plt.fill_between(i * 20 + x, mean_bad_pokes[i + 1]-std_err[i + 1], mean_bad_pokes[i + 1]+std_err[i + 1], alpha=0.2)
-    plt.ylabel('Number of A/B pokes following A/B choice')
+    plt.ylabel('Probability of A/B poke following A/B choice')
     #plt.title('Rewarded Trials')
+    plt.legend(loc='upper right')
     plt.xlabel('Reversal')
                    
             
 # Experiment plot of I pokes during the choice state when A or B should be chosen per reversal -------------------------------------------------------------------------
-def session_I_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1): 
+def I_poke_reversal_plot(experiment,subject_IDs ='all', fig_no = 1): 
     if subject_IDs == 'all':
         subject_IDs = experiment.subject_IDs
         n_subjects = len(subject_IDs)
@@ -317,14 +370,14 @@ def session_I_poke_exp_reversal(experiment,subject_IDs ='all', fig_no = 1):
     x=np.arange(21)
     for i in range(tasks - 1): 
         plt.plot(i * 20 + x, mean_bad_pokes[i + 1])
-        plt.fill_between(i * 20 + x, mean_bad_pokes[i + 1]-std_err[i + 1], mean_bad_pokes[i + 1]+std_err[i + 1], alpha=0.2)
+        plt.fill_between(i * 20 + x, mean_bad_pokes[i + 1]-std_err[i + 1], mean_bad_pokes[i + 1]+std_err[i + 1], alpha=0.2)     
     plt.ylabel('Number of I pokes during Choice State')
     plt.xlabel('Reversal')
             
 #Plot of pokes in order -------------------------------------------------------------------------
     
 # Experiment plot of poke I in the period following trial initiation -------------------------------------------------------------------------
-def session_I_poke_exp(experiment, subject_IDs ='all', fig_no = 1): 
+def I_poke_session_plot(experiment, subject_IDs ='all', fig_no = 1): 
     if subject_IDs == 'all':
         subject_IDs = experiment.subject_IDs
         #n_subjects = len(subject_IDs)
@@ -375,15 +428,10 @@ def session_I_poke_exp(experiment, subject_IDs ='all', fig_no = 1):
                         correct_poke += 1
                 elif event == 'period_before_iti':
                     period_before_ITI = False
-            print(sum(wrong))
             number_I[n_subj,j] = (sum(wrong)/l_trials)
             number_A_B[n_subj,j] = (sum(correct)/l_trials)            
-    #mean_proportion=np.nanmean(number_I,axis = 0)
     number_I_mean=np.nanmean(number_I,axis = 0)
-    number_A_B_mean = np.nanmean(number_A_B,axis = 0)
-    #proportion_incorrect_correct=number_I_mean/number_A_B_mean
     sns.set()
-    #std_proportion=np.nanstd(number_I, axis = 0)
     std_proportion=np.nanstd(number_I_mean, axis = 0)
     sample_size=np.sqrt(9)
     std_err= std_proportion/sample_size
@@ -456,13 +504,13 @@ def session_plot_moving_average(session, fig_no = 1, is_subplot = False):
     if not is_subplot: plt.figure(fig_no, figsize = [7.5, 1.8]).clf()
     Block_transitions = block[1:]-block[:-1]
     choices = session.trial_data['choices']
-    #threshold = block_transsitions(session.trial_data['pre-reversal trials'])# threshold
+    #threshold = block_transsitions(session.trial_data['pre-reversal trials']) # If you want threshold crossed on the plot 
     index_block = []
     for i in Block_transitions:
         index_block = np.where(Block_transitions == 1)[0]
     for i in index_block:
         plot.axvline(x = i,color = 'g',linestyle = '-', lw = '0.6')
-    #for i in threshold:
+    #for i in threshold: # If you want threshold crossed on the plot 
     #    plot.axvline(x=i,color='k',linestyle='--', lw='0.6')
     plot.axhline(y = 0.25, color = 'r', lw = 0.1)
     plot.axhline(y = 0.75, color = 'r', lw = 0.1)
@@ -477,7 +525,6 @@ def session_plot_moving_average(session, fig_no = 1, is_subplot = False):
    
 
 # Experiment plot -------------------------------------------------------------------------
-
 def experiment_plot(experiment, subject_IDs = 'all', when = 'all', fig_no = 1,
                    ignore_bc_trials = False):
     'Plot specified set of sessions from an experiment in a single figure'
